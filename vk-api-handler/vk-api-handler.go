@@ -17,6 +17,7 @@ type VkApiHandler struct{
 
 const baseUrl = "https://api.vk.com/method/"
 
+// см. https://vk.com/dev/groups.getMembers "Пример запроса"
 type GetMembersResult struct{
 	Response struct{
 		Count int `json:"count"`

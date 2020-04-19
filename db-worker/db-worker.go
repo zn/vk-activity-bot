@@ -8,14 +8,16 @@ import (
 	"strings"
 )
 
+// Значение события == event_id в таблице events
 type Event int
 const (
-	Subscribe Event = iota + 1
-	Like
+	Subscribe Event = iota + 1 // event_id = 1
+	Like // event_id = 2 и т.д.
 	Repost
 	Comment
 )
 
+// Обновляет список подписчиков в базе данных
 func UpdateSubscribers(updatedSubs []int, groupId string){
 	db, err := sql.Open("mysql", "root:@tcp(localhost:3308)/vk_activity")
 	if err != nil{
@@ -36,7 +38,7 @@ func UpdateSubscribers(updatedSubs []int, groupId string){
 		savedSubs = append(savedSubs, userId)
 	}
 
-	// Удаляем отписавшихся
+	// Удаляем из базы отписавшихся людей
 	sqlStr, values := generateSqlDeleteUnsubs(savedSubs, updatedSubs)
 	if values != nil{
 		stmt,err := db.Prepare(sqlStr)
@@ -49,7 +51,7 @@ func UpdateSubscribers(updatedSubs []int, groupId string){
 		}
 	}
 
-	// Добавляем новых
+	// Добавляем в базу новых подписчиков
 	sqlStr, values = generateSqlInsertSubs(savedSubs,updatedSubs, groupId)
 	if values != nil{
 		stmt, err := db.Prepare(sqlStr)
@@ -63,6 +65,8 @@ func UpdateSubscribers(updatedSubs []int, groupId string){
 	}
 }
 
+// Генерирует SQL-запрос на удаление отписавшихся
+// Возвращает запрос в виде строки и список параметров
 func generateSqlDeleteUnsubs(savedSubs, updatedSubs []int) (sqlStr string, values []interface{}){
 	sqlStr = "DELETE FROM users_activities WHERE user_id IN (%s)"
 	var placeholders string
@@ -77,6 +81,8 @@ func generateSqlDeleteUnsubs(savedSubs, updatedSubs []int) (sqlStr string, value
 	return
 }
 
+// Генерирует SQL-запрос на добавление новых подписчиков
+// Возвращает запрос в виде строки и список параметров
 func generateSqlInsertSubs(savedSubs, updatedSubs []int, groupId string) (sqlStr string, values []interface{}){
 	sqlStr = "INSERT INTO users_activities(user_id,group_id,event_id) VALUES "
 	var inserts []string
@@ -91,6 +97,7 @@ func generateSqlInsertSubs(savedSubs, updatedSubs []int, groupId string) (sqlStr
 	return
 }
 
+// Проверяет, содержится ли элемент value в массиве arr
 func contains(arr []int, value int) bool{
 	for _, item := range arr {
 		if item == value{

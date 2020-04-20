@@ -14,8 +14,9 @@ import (
 
 type VkApiHandler struct{
 	GroupId string
-	ApiToken string
 	Version string
+	ApiToken string
+	RequestsPerSecond int // 3 or 20
 }
 
 const baseUrl = "https://api.vk.com/method/"
@@ -68,6 +69,7 @@ func (handler VkApiHandler) GetMembersList(){
 
 	fmt.Println("Started!", time.Now().Format("15:04:05"))
 	var sum int
+	var counter int
 	for {
 		var result GetMembersResult
 		callMethod("execute", params, &result)
@@ -76,6 +78,11 @@ func (handler VkApiHandler) GetMembersList(){
 		// <- может быть тут в chan записывать
 		if result.Response.Done{
 			break
+		}
+		counter++
+		if counter == handler.RequestsPerSecond{
+			time.Sleep(time.Second)
+			counter = 0
 		}
 	}
 	fmt.Println("Finished!", time.Now().Format("15:04:05"))

@@ -11,8 +11,9 @@ const API_TOKEN string = ""
 func main(){
 	vkHandler := vk.VkApiHandler{
 		GroupId: GROUP_ID,
-		ApiToken: API_TOKEN,
 		Version:  API_VERSION,
+		ApiToken: API_TOKEN,
+		RequestsPerSecond: 3,
 	}
 	vkHandler.GetMembersList()
 	//db.UpdateSubscribers(result.Response.Items, GROUP_ID)

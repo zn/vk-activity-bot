@@ -75,7 +75,6 @@ func (handler VkApiHandler) GetMembersList(){
 		callMethod("execute", params, &result)
 		params["offset"] = strconv.Itoa(result.Response.Offset)
 		sum += len(result.Response.Items)
-		// <- может быть тут в chan записывать
 		if result.Response.Done{
 			break
 		}

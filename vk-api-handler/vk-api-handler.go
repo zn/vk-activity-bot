@@ -30,7 +30,7 @@ type GetMembersResult struct{
 }
 
 // Возвращает список участников сообщества
-func (handler VkApiHandler) GetMembersList(){
+func (handler VkApiHandler) GetMembersList() []int{
 	if handler.ApiToken == "" ||
 		handler.Version == "" ||
 		handler.GroupId == ""{
@@ -67,14 +67,14 @@ func (handler VkApiHandler) GetMembersList(){
 		"v" : handler.Version,
 	}
 
-	fmt.Println("Started!", time.Now().Format("15:04:05"))
-	var sum int
+	fmt.Println("Started", time.Now().Format("15:04:05"))
+	var items []int
 	var counter int
 	for {
 		var result GetMembersResult
 		callMethod("execute", params, &result)
 		params["offset"] = strconv.Itoa(result.Response.Offset)
-		sum += len(result.Response.Items)
+		items = append(items, result.Response.Items...)
 		if result.Response.Done{
 			break
 		}
@@ -84,8 +84,8 @@ func (handler VkApiHandler) GetMembersList(){
 			counter = 0
 		}
 	}
-	fmt.Println("Finished!", time.Now().Format("15:04:05"))
-	fmt.Println("Всего получено:", sum)
+	fmt.Println("Finished", time.Now().Format("15:04:05"))
+	return items
 }
 
 // Делает вызов API-метода и преобразует полученный json в структуру parseTo

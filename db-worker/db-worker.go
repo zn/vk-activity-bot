@@ -1,11 +1,13 @@
 package db_worker
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"log"
-	"strings"
+	"time"
 )
 
 // Значение события == event_id в таблице events
@@ -17,90 +19,85 @@ const (
 	Comment
 )
 
+type DbWorker struct{
+	Client *mongo.Client
+	Context context.Context
+}
+
+type userActivity struct{
+	Id primitive.ObjectID `bson:"_id"`
+	UserId int `bson:"user_id"`
+	GroupId string `bson:"group_id"`
+	EventId Event `bson:"event_id"`
+	Date time.Time `bson:"date"`
+}
+
 // Обновляет список подписчиков в базе данных
-func UpdateSubscribers(updatedSubs []int, groupId string){
-	db, err := sql.Open("mysql", "root:@tcp(localhost:3308)/vk_activity")
-	if err != nil{
+func (db DbWorker) UpdateSubscribers(updatedSubs []int, groupId string) {
+	if len(updatedSubs) == 0 {return}
+	collection := db.Client.Database("vk_activity").Collection("users_activities")
+
+	var oldSubscribers []userActivity
+	cursor, err := collection.Find(db.Context, bson.M{})
+	if err != nil{ log.Fatal(err) }
+	defer cursor.Close(db.Context)
+	if err = cursor.All(db.Context, &oldSubscribers); err != nil{
 		log.Fatal(err)
 	}
-	defer db.Close()
 
-	rows, err := db.Query("SELECT user_id FROM users_activities WHERE event_id=?", Subscribe)
-	if err != nil{
-		log.Fatal(err)
+	// удаляем отписавшихся
+	var usersToDelete []primitive.ObjectID
+	for _, subscriber := range oldSubscribers{
+		if !inArray(updatedSubs, subscriber.UserId){
+			usersToDelete = append(usersToDelete, subscriber.Id)
+		}
 	}
-	defer rows.Close()
-
-	var savedSubs []int
-	for rows.Next(){
-		var userId int
-		rows.Scan(&userId)
-		savedSubs = append(savedSubs, userId)
-	}
-
-	// Удаляем из базы отписавшихся людей
-	sqlStr, values := generateSqlDeleteUnsubs(savedSubs, updatedSubs)
-	if values != nil{
-		stmt,err := db.Prepare(sqlStr)
-		if err != nil{
+	if len(usersToDelete) != 0 {
+		deleteResult, err := collection.DeleteMany(db.Context, bson.M{
+			"_id": bson.D{{"$in", usersToDelete}},
+		})
+		if err != nil {
 			log.Fatal(err)
 		}
-		_, err = stmt.Exec(values...)
-		if err != nil{
-			log.Fatal(err)
-		}
+		fmt.Println("Unsubscribed:", deleteResult.DeletedCount)
 	}
 
-	// Добавляем в базу новых подписчиков
-	sqlStr, values = generateSqlInsertSubs(savedSubs,updatedSubs, groupId)
-	if values != nil{
-		stmt, err := db.Prepare(sqlStr)
-		if err != nil{
-			log.Fatal(err)
-		}
-		_, err = stmt.Exec(values...)
-		if err != nil{
-			log.Fatal(err)
-		}
-	}
-}
-
-// Генерирует SQL-запрос на удаление отписавшихся
-// Возвращает запрос в виде строки и список параметров
-func generateSqlDeleteUnsubs(savedSubs, updatedSubs []int) (sqlStr string, values []interface{}){
-	sqlStr = "DELETE FROM users_activities WHERE user_id IN (%s)"
-	var placeholders string
-	for _, id := range savedSubs {
-		if !contains(updatedSubs, id){
-			values = append(values, id)
-			placeholders += "?,"
-		}
-	}
-	placeholders = strings.TrimSuffix(placeholders, ",")
-	sqlStr = fmt.Sprintf(sqlStr,placeholders)
-	return
-}
-
-// Генерирует SQL-запрос на добавление новых подписчиков
-// Возвращает запрос в виде строки и список параметров
-func generateSqlInsertSubs(savedSubs, updatedSubs []int, groupId string) (sqlStr string, values []interface{}){
-	sqlStr = "INSERT INTO users_activities(user_id,group_id,event_id) VALUES "
-	var inserts []string
-	const placeholders = "(?,?,?)"
+	// добавляем новых подписчиков
+	var usersToInsert []interface{}
 	for _, id := range updatedSubs{
-		if !contains(savedSubs, id){
-			inserts = append(inserts, placeholders)
-			values = append(values, id, groupId, Subscribe)
+		if !inDatabase(oldSubscribers, id){
+			temp := userActivity{
+				Id:      primitive.NewObjectID(),
+				UserId:  id,
+				GroupId: groupId,
+				EventId: Subscribe,
+				Date:    time.Now(),
+			}
+			usersToInsert = append(usersToInsert, temp)
 		}
 	}
-	sqlStr = sqlStr + strings.Join(inserts, ",")
-	return
+	if len(usersToInsert) != 0{
+		insertResult, err := collection.InsertMany(db.Context, usersToInsert)
+		if err != nil{
+			log.Fatal(err)
+		}
+		fmt.Println("New subscribers:", len(insertResult.InsertedIDs))
+	}
 }
 
 // Проверяет, содержится ли элемент value в массиве arr
-func contains(arr []int, value int) bool{
+func inArray(arr []int, value int) bool{
 	for _, item := range arr {
 		if item == value{
+			return true
+		}
+	}
+	return false
+}
+
+func inDatabase(arr []userActivity, userId int) bool{
+	for _, activity := range arr{
+		if userId == activity.UserId{
 			return true
 		}
 	}
